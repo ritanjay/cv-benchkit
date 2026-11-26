@@ -28,6 +28,7 @@ from cv_benchkit.metrics import (
     compute_diou,
     compute_giou,
     compute_iou,
+    compute_nms,
     compute_precision_recall_curve,
 )
 
@@ -44,6 +45,7 @@ __all__ = [
     "compute_diou",
     "compute_giou",
     "compute_iou",
+    "compute_nms",
     "compute_precision_recall_curve",
     "cxcywh_to_xyxy",
     "normalized_to_xyxy",
