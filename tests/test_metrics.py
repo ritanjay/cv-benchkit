@@ -317,3 +317,92 @@ def test_confusion_matrix_accepts_boundary_labels() -> None:
         num_classes=2,
     )
     assert cm.shape == (3, 3)
+
+
+class TestConfusionMatrixValidation:
+    """Regression tests for confusion matrix input validation (issue #64)."""
+
+    @pytest.mark.parametrize("num_classes", [0, -1])
+    @pytest.mark.parametrize("nonempty", [True, False], ids=["nonempty", "empty"])
+    def test_nonpositive_num_classes_raises_expected_error(
+        self, num_classes: int, nonempty: bool
+    ) -> None:
+        if nonempty:
+            labels = np.array([0])
+            boxes = np.array([[0.0, 0.0, 10.0, 10.0]])
+        else:
+            labels = np.array([], dtype=int)
+            boxes = np.empty((0, 4))
+
+        with pytest.raises(
+            ValueError, match=rf"num_classes must be a positive integer, got {num_classes}"
+        ):
+            compute_confusion_matrix(labels, labels, boxes, boxes, num_classes)
+
+    @pytest.mark.parametrize("shape", [(3, 1), (3, 2)], ids=["2d-col", "2d-multi"])
+    @pytest.mark.parametrize("side", ["gt", "pred"])
+    def test_multidimensional_labels_rejected(self, shape: tuple[int, int], side: str) -> None:
+        valid_labels = np.array([0, 1, 0])
+        invalid_labels = np.zeros(shape, dtype=int)
+        boxes = np.array(
+            [
+                [0.0, 0.0, 10.0, 10.0],
+                [20.0, 20.0, 30.0, 30.0],
+                [40.0, 40.0, 50.0, 50.0],
+            ]
+        )
+        gt_labels = invalid_labels if side == "gt" else valid_labels
+        pred_labels = invalid_labels if side == "pred" else valid_labels
+
+        with pytest.raises(ValueError, match=r"gt_labels and pred_labels must be 1D arrays"):
+            compute_confusion_matrix(gt_labels, pred_labels, boxes, boxes, num_classes=2)
+
+    def test_valid_1d_labels_exact_confusion_matrix(self) -> None:
+        gt_boxes = np.array(
+            [
+                [0.0, 0.0, 10.0, 10.0],
+                [20.0, 20.0, 30.0, 30.0],
+                [50.0, 50.0, 60.0, 60.0],
+            ]
+        )
+        gt_labels = np.array([0, 1, 0])
+        pred_boxes = np.array(
+            [
+                [0.0, 0.0, 10.0, 10.0],
+                [20.0, 20.0, 30.0, 30.0],
+                [80.0, 80.0, 90.0, 90.0],
+            ]
+        )
+        pred_labels = np.array([0, 0, 1])
+
+        cm = compute_confusion_matrix(
+            gt_labels=gt_labels,
+            pred_labels=pred_labels,
+            gt_boxes=gt_boxes,
+            pred_boxes=pred_boxes,
+            num_classes=2,
+            iou_threshold=0.5,
+        )
+        expected = np.array(
+            [
+                [1, 0, 1],
+                [1, 0, 0],
+                [0, 1, 0],
+            ],
+            dtype=np.int64,
+        )
+        np.testing.assert_array_equal(cm, expected)
+
+    def test_empty_and_out_of_range_behavior_unchanged(self) -> None:
+        cm_empty = compute_confusion_matrix(
+            np.array([], dtype=int),
+            np.array([], dtype=int),
+            np.empty((0, 4)),
+            np.empty((0, 4)),
+            num_classes=2,
+        )
+        np.testing.assert_array_equal(cm_empty, np.zeros((3, 3), dtype=np.int64))
+
+        boxes = np.array([[0.0, 0.0, 10.0, 10.0]])
+        with pytest.raises(ValueError, match=r"Class labels must be in range \[0, 1\]"):
+            compute_confusion_matrix(np.array([2]), np.array([0]), boxes, boxes, num_classes=2)
