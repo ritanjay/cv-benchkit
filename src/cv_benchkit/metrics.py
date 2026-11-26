@@ -350,12 +350,12 @@ def compute_nms(
 
     boxes_arr = np.asarray(boxes, dtype=np.float64)
     scores_arr = np.asarray(scores, dtype=np.float64)
-    if boxes_arr.size == 0 and scores_arr.size == 0:
+    if boxes_arr.shape == (0,) and scores_arr.size == 0:
         boxes_arr = boxes_arr.reshape(0, 4)
     if boxes_arr.ndim != 2 or boxes_arr.shape[1] != 4:
         raise ValueError(f"boxes must have shape (N, 4), got {boxes_arr.shape}")
-    boxes_arr = _normalize_boxes(boxes_arr)
-    n = boxes_arr.shape[0]
+    normalized_boxes = _normalize_boxes(boxes_arr)
+    n = normalized_boxes.shape[0]
     if scores_arr.ndim != 1 or scores_arr.shape[0] != n:
         raise ValueError(f"scores must be a 1D array of length {n}, got shape {scores_arr.shape}")
     if not np.all(np.isfinite(scores_arr)):
@@ -380,7 +380,10 @@ def compute_nms(
         rest = order[1:]
         if rest.size == 0:
             break
-        overlaps = compute_iou(boxes_arr[best : best + 1], boxes_arr[rest])[0] > iou_threshold
+        overlaps = (
+            compute_iou(normalized_boxes[best : best + 1], normalized_boxes[rest])[0]
+            > iou_threshold
+        )
         if classes is not None:
             overlaps &= classes[rest] == classes[best]
         order = rest[~overlaps]

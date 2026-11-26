@@ -100,6 +100,10 @@ class TestEmpty:
         result = compute_nms(np.empty((0, 4)), np.array([]), class_ids=np.array([], dtype=np.int64))
         assert result.shape == (0,)
 
+    def test_invalid_empty_2d_shape_raises(self) -> None:
+        with pytest.raises(ValueError, match="boxes"):
+            compute_nms(np.empty((0, 3)), np.array([]))
+
 
 class TestClassAware:
     def test_overlapping_boxes_of_different_classes_are_both_kept(self) -> None:
