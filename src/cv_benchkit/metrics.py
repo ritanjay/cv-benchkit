@@ -292,6 +292,101 @@ def _iou_and_center_penalty(
     return iou, penalty
 
 
+def compute_nms(
+    boxes: NDArray[np.floating[Any]],
+    scores: NDArray[np.floating[Any]],
+    iou_threshold: float = 0.5,
+    class_ids: NDArray[np.integer[Any]] | None = None,
+) -> NDArray[np.int64]:
+    """Perform greedy non-maximum suppression (NMS) on bounding boxes.
+
+    Boxes are visited in order of descending score. Each visited box that has
+    not been suppressed is kept, and every remaining box whose IoU with it
+    is greater than ``iou_threshold`` is suppressed. Boxes with equal scores
+    keep their input order (stable sort), so the result is deterministic.
+
+    IoU is computed with :func:`compute_iou`, one kept box against the
+    remaining candidates at a time, so memory stays ``O(N)`` instead of
+    building the full ``(N, N)`` IoU matrix.
+
+    Parameters
+    ----------
+    boxes : ndarray, shape ``(N, 4)``
+        Bounding boxes in ``[x1, y1, x2, y2]`` format.
+    scores : ndarray, shape ``(N,)``
+        Confidence scores for each box. Must be finite.
+    iou_threshold : float, default 0.5
+        IoU threshold for suppression (must be in ``[0.0, 1.0]``). A box is
+        suppressed only when its IoU is strictly greater than this value, so
+        ``1.0`` keeps every box.
+    class_ids : ndarray, shape ``(N,)``, optional
+        Integer class IDs. If provided, NMS is performed independently per
+        class: a box only suppresses boxes of the same class.
+
+    Returns
+    -------
+    ndarray, shape ``(K,)``, dtype int64
+        Indices of the retained boxes, sorted by descending score.
+
+    Raises
+    ------
+    ValueError
+        If ``boxes`` is not ``(N, 4)``, ``scores`` is not a 1D array of
+        length ``N`` or has a non-finite value, ``iou_threshold`` is outside
+        ``[0.0, 1.0]``, ``class_ids`` is not a 1D array of length ``N``, or a
+        box is invalid (non-finite or inverted coordinates).
+
+    Examples
+    --------
+    >>> boxes = np.array([[0, 0, 10, 10], [1, 1, 10, 10], [20, 20, 30, 30]], dtype=float)
+    >>> scores = np.array([0.9, 0.8, 0.7])
+    >>> compute_nms(boxes, scores, iou_threshold=0.5)
+    array([0, 2])
+    >>> compute_nms(boxes, scores, iou_threshold=0.5, class_ids=np.array([0, 1, 0]))
+    array([0, 1, 2])
+    """
+    if not 0.0 <= iou_threshold <= 1.0:
+        raise ValueError(f"iou_threshold must be in [0.0, 1.0], got {iou_threshold}")
+
+    boxes_arr = np.asarray(boxes, dtype=np.float64)
+    scores_arr = np.asarray(scores, dtype=np.float64)
+    if boxes_arr.size == 0 and scores_arr.size == 0:
+        boxes_arr = boxes_arr.reshape(0, 4)
+    if boxes_arr.ndim != 2 or boxes_arr.shape[1] != 4:
+        raise ValueError(f"boxes must have shape (N, 4), got {boxes_arr.shape}")
+    boxes_arr = _normalize_boxes(boxes_arr)
+    n = boxes_arr.shape[0]
+    if scores_arr.ndim != 1 or scores_arr.shape[0] != n:
+        raise ValueError(f"scores must be a 1D array of length {n}, got shape {scores_arr.shape}")
+    if not np.all(np.isfinite(scores_arr)):
+        raise ValueError("scores must be finite (no NaN or Inf)")
+
+    classes: NDArray[Any] | None = None
+    if class_ids is not None:
+        classes = np.asarray(class_ids)
+        if classes.ndim != 1 or classes.shape[0] != n:
+            raise ValueError(
+                f"class_ids must be a 1D array of length {n}, got shape {classes.shape}"
+            )
+
+    if n == 0:
+        return np.empty(0, dtype=np.int64)
+
+    order = np.argsort(-scores_arr, kind="stable")
+    keep: list[int] = []
+    while order.size > 0:
+        best = int(order[0])
+        keep.append(best)
+        rest = order[1:]
+        if rest.size == 0:
+            break
+        overlaps = compute_iou(boxes_arr[best : best + 1], boxes_arr[rest])[0] > iou_threshold
+        if classes is not None:
+            overlaps &= classes[rest] == classes[best]
+        order = rest[~overlaps]
+    return np.asarray(keep, dtype=np.int64)
+
+
 def compute_confusion_matrix(
     gt_labels: NDArray[np.integer[Any]],
     pred_labels: NDArray[np.integer[Any]],
