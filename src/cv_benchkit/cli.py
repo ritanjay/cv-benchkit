@@ -101,6 +101,35 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Print the statistics as JSON.",
     )
 
+    # ── filter ───────────────────────────────────────────────────────────
+    filter_p = sub.add_parser(
+        "filter",
+        help="Filter a COCO dataset by category or bounding-box area.",
+    )
+    filter_p.add_argument("file", help="Path to the input COCO JSON file.")
+    filter_p.add_argument(
+        "-o", "--output", required=True, help="Path to the output COCO JSON file."
+    )
+
+    filter_p.add_argument(
+        "--categories",
+        help="Comma-separated category names or IDs.",
+    )
+    filter_p.add_argument(
+        "--min-area",
+        type=float,
+        help="Drop annotations with area smaller than this value.",
+    )
+    filter_p.add_argument(
+        "--max-area",
+        type=float,
+        help="Drop annotations with area larger than this value.",
+    )
+    filter_p.add_argument(
+        "--drop-empty-images",
+        action="store_true",
+        help="Remove images that have no remaining annotations.",
+    )
     return parser
 
 
@@ -349,6 +378,111 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_filter(args: argparse.Namespace) -> int:
+    input_path = Path(args.file)
+    output_path = Path(args.output)
+
+    if not input_path.exists():
+        print(f"Error: input file '{input_path}' not found.", file=sys.stderr)
+        return 1
+
+    if input_path.is_dir():
+        print(f"Error: input path '{input_path}' is a directory.", file=sys.stderr)
+        return 1
+
+    if args.min_area is not None and args.max_area is not None and args.min_area > args.max_area:
+        print("Error: --min-area cannot exceed --max-area.", file=sys.stderr)
+        return 1
+
+    try:
+        validate_coco_file(input_path)
+        data = json.loads(input_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"Error: invalid COCO input: {exc}", file=sys.stderr)
+        return 1
+
+    original_annotations = data["annotations"]
+    original_image_count = len(data["images"])
+
+    selected_category_ids = None
+
+    if args.categories is not None:
+        requested_categories = [
+            category.strip() for category in args.categories.split(",") if category.strip()
+        ]
+
+        if not requested_categories:
+            print("Error: no valid categories provided.", file=sys.stderr)
+            return 1
+
+        known_ids = {category["id"] for category in data["categories"]}
+        known_names = {category["name"]: category["id"] for category in data["categories"]}
+
+        selected_category_ids = set()
+
+        for category in requested_categories:
+            if category in known_names:
+                category_id = known_names[category]
+            else:
+                try:
+                    category_id = int(category)
+                except ValueError:
+                    print(f"Error: category '{category}' not found.", file=sys.stderr)
+                    return 1
+
+            if category_id not in known_ids:
+                print(f"Error: category '{category}' not found.", file=sys.stderr)
+                return 1
+
+            selected_category_ids.add(category_id)
+
+    filtered_annotations = []
+
+    for annotation in original_annotations:
+        if (
+            selected_category_ids is not None
+            and annotation["category_id"] not in selected_category_ids
+        ):
+            continue
+
+        if args.min_area is not None and annotation["area"] < args.min_area:
+            continue
+
+        if args.max_area is not None and annotation["area"] > args.max_area:
+            continue
+
+        filtered_annotations.append(annotation)
+
+    data["annotations"] = filtered_annotations
+
+    removed_images = 0
+
+    if args.drop_empty_images:
+        used_image_ids = {annotation["image_id"] for annotation in filtered_annotations}
+        data["images"] = [image for image in data["images"] if image["id"] in used_image_ids]
+        removed_images = original_image_count - len(data["images"])
+
+    try:
+        output_path.write_text(
+            json.dumps(data, indent=2) + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        print(f"Error: could not write output file: {exc}", file=sys.stderr)
+        return 1
+
+    kept = len(filtered_annotations)
+    dropped = len(original_annotations) - kept
+
+    print(f"Filtering complete: {output_path}")
+    print(f"Annotations kept: {kept}")
+    print(f"Annotations dropped: {dropped}")
+    print(f"Images remaining: {len(data['images'])}")
+    print(f"Empty images removed: {removed_images}")
+
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI entry point."""
     parser = _build_parser()
@@ -360,6 +494,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _cmd_validate(args)
     if args.command == "stats":
         return _cmd_stats(args)
+    if args.command == "filter":
+        return _cmd_filter(args)
 
     parser.print_help()
     return 1  # pragma: no cover
