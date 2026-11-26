@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-11-26
+
+### Added
+- **COCO Dataset Filter CLI (`cv-benchkit filter`)**: Added `filter` subcommand supporting category name/ID filtering (`--categories`), bounding-box area bounds (`--min-area`, `--max-area`), and `--drop-empty-images` while preserving COCO metadata and annotation IDs ([#91](https://github.com/udayraj1238/cv-benchkit/pull/91) by [@BhushanSonar10](https://github.com/BhushanSonar10)).
+- **Greedy Non-Maximum Suppression (`compute_nms`)**: Implemented `compute_nms(boxes, scores, iou_threshold=0.5, class_ids=None)` with `O(N)` per-step `compute_iou` evaluation, stable score ordering, and optional class-aware mode ([#90](https://github.com/udayraj1238/cv-benchkit/pull/90) by [@ritanjay](https://github.com/ritanjay)).
+
+### Fixed
+- **Convert CLI Input Path Validation**: Validated input path types (`file` vs `directory`) across `coco`/`yolo`/`voc` conversion sources with explicit error messages ([#89](https://github.com/udayraj1238/cv-benchkit/pull/89) by [@pratuyshswain](https://github.com/pratuyshswain)).
+- **Confusion Matrix Input Validation**: Reordered `num_classes <= 0` check before label-range validation and rejected multidimensional label arrays (`ndim > 1`) in `compute_confusion_matrix()` ([#92](https://github.com/udayraj1238/cv-benchkit/pull/92) by [@DevByPurva](https://github.com/DevByPurva)).
+
 ## [0.2.2] - 2026-11-24
 
 ### Added

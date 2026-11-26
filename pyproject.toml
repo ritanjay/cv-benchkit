@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cv-benchkit"
-version = "0.2.2"
+version = "0.2.3"
 description = "Computer-vision benchmark toolkit: bbox format converters, dataset translators, and evaluation metrics."
 readme = "README.md"
 license = "Apache-2.0"
