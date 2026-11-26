@@ -428,7 +428,10 @@ def compute_confusion_matrix(
     Raises
     ------
     ValueError
-        If ``iou_threshold`` is outside ``[0, 1]``.
+        If ``iou_threshold`` is outside ``[0, 1]``, ``gt_labels`` or
+        ``pred_labels`` has more than one dimension, ``num_classes`` is not
+        positive, any class label is outside ``[0, num_classes - 1]``, or the
+        label and box counts do not match.
     """
     if not (0.0 <= iou_threshold <= 1.0):
         msg = f"iou_threshold must be between 0.0 and 1.0, got {iou_threshold}"
@@ -439,13 +442,17 @@ def compute_confusion_matrix(
     gt_boxes = np.asarray(gt_boxes, dtype=np.float64)
     pred_boxes = np.asarray(pred_boxes, dtype=np.float64)
 
+    if gt_labels.ndim > 1 or pred_labels.ndim > 1:
+        raise ValueError("gt_labels and pred_labels must be 1D arrays")
+
+    if num_classes <= 0:
+        raise ValueError(f"num_classes must be a positive integer, got {num_classes}")
+
     if (gt_labels.size > 0 and (np.any(gt_labels < 0) or np.any(gt_labels >= num_classes))) or (
         pred_labels.size > 0 and (np.any(pred_labels < 0) or np.any(pred_labels >= num_classes))
     ):
         raise ValueError(f"Class labels must be in range [0, {num_classes - 1}]")
 
-    if num_classes <= 0:
-        raise ValueError(f"num_classes must be a positive integer, got {num_classes}")
     if len(gt_labels) != len(gt_boxes):
         raise ValueError("Number of ground-truth labels must match number of ground-truth boxes")
     if len(pred_labels) != len(pred_boxes):
